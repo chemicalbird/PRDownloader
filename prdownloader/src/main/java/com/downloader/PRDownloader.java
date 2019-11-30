@@ -25,6 +25,7 @@ import android.content.Context;
 import com.downloader.core.Core;
 import com.downloader.internal.ComponentHolder;
 import com.downloader.internal.DownloadRequestQueue;
+import com.downloader.internal.stream.OutputStreamWrapper;
 import com.downloader.request.DownloadRequestBuilder;
 import com.downloader.utils.Utils;
 
@@ -57,6 +58,7 @@ public class PRDownloader {
      * @param config  The PRDownloaderConfig
      */
     public static void initialize(Context context, PRDownloaderConfig config) {
+        OutputStreamWrapper.init(context);
         ComponentHolder.getInstance().init(context, config);
         DownloadRequestQueue.initialize();
     }

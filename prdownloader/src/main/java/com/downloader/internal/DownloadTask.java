@@ -16,6 +16,8 @@
 
 package com.downloader.internal;
 
+import android.net.Uri;
+
 import com.downloader.Constants;
 import com.downloader.Error;
 import com.downloader.Progress;
@@ -25,7 +27,7 @@ import com.downloader.database.DownloadModel;
 import com.downloader.handler.ProgressHandler;
 import com.downloader.httpclient.HttpClient;
 import com.downloader.internal.stream.FileDownloadOutputStream;
-import com.downloader.internal.stream.FileDownloadRandomAccessFile;
+import com.downloader.internal.stream.OutputStreamWrapper;
 import com.downloader.request.DownloadRequest;
 import com.downloader.utils.Utils;
 
@@ -56,7 +58,8 @@ public class DownloadTask {
     private int responseCode;
     private String eTag;
     private boolean isResumeSupported;
-    private String tempPath;
+    private String tempFileName;
+    private Uri storageUri;
 
     private DownloadTask(DownloadRequest request) {
         this.request = request;
@@ -84,14 +87,18 @@ public class DownloadTask {
                 progressHandler = new ProgressHandler(request.getOnProgressListener());
             }
 
-            tempPath = Utils.getTempPath(request.getDirPath(), request.getFileName());
+            if (!request.getDirPath().startsWith("file:") && !request.getDirPath().startsWith("content:")) {
+                storageUri = Uri.fromFile(new File(request.getDirPath()));
+            } else {
+                storageUri = Uri.parse(request.getDirPath());
+            }
 
-            File file = new File(tempPath);
+            tempFileName = Utils.getTempName(request.getFileName());
 
             DownloadModel model = getDownloadModelIfAlreadyPresentInDatabase();
 
             if (model != null) {
-                if (file.exists()) {
+                if (OutputStreamWrapper.getInstance().exists(storageUri, tempFileName)) {
                     request.setTotalBytes(model.getTotalBytes());
                     request.setDownloadedBytes(model.getDownloadedBytes());
                 } else {
@@ -165,19 +172,9 @@ public class DownloadTask {
 
             byte[] buff = new byte[BUFFER_SIZE];
 
-            if (!file.exists()) {
-                if (file.getParentFile() != null && !file.getParentFile().exists()) {
-                    if (file.getParentFile().mkdirs()) {
-                        //noinspection ResultOfMethodCallIgnored
-                        file.createNewFile();
-                    }
-                } else {
-                    //noinspection ResultOfMethodCallIgnored
-                    file.createNewFile();
-                }
-            }
+            OutputStreamWrapper.getInstance().createFile(storageUri, tempFileName);
 
-            this.outputStream = FileDownloadRandomAccessFile.create(file);
+            this.outputStream = OutputStreamWrapper.getInstance().getOutputStream(storageUri, tempFileName);
 
             if (isResumeSupported && request.getDownloadedBytes() != 0) {
                 outputStream.seek(request.getDownloadedBytes());
@@ -218,9 +215,7 @@ public class DownloadTask {
 
             } while (true);
 
-            final String path = Utils.getPath(request.getDirPath(), request.getFileName());
-
-            Utils.renameFileName(tempPath, path);
+            OutputStreamWrapper.getInstance().renameFile(storageUri, tempFileName, request.getFileName());
 
             response.setSuccessful(true);
 
@@ -244,11 +239,7 @@ public class DownloadTask {
     }
 
     private void deleteTempFile() {
-        File file = new File(tempPath);
-        if (file.exists()) {
-            //noinspection ResultOfMethodCallIgnored
-            file.delete();
-        }
+        OutputStreamWrapper.getInstance().deleteFile(storageUri, tempFileName);
     }
 
     private boolean isSuccessful() {

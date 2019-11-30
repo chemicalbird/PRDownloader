@@ -16,12 +16,17 @@
 
 package com.downloader.utils;
 
+import android.net.Uri;
+import android.text.TextUtils;
+
 import com.downloader.Constants;
 import com.downloader.core.Core;
 import com.downloader.database.DownloadModel;
 import com.downloader.httpclient.HttpClient;
 import com.downloader.internal.ComponentHolder;
 import com.downloader.request.DownloadRequest;
+
+import junit.framework.Assert;
 
 import java.io.File;
 import java.io.IOException;
@@ -49,6 +54,10 @@ public final class Utils {
 
     public static String getTempPath(String dirPath, String fileName) {
         return getPath(dirPath, fileName) + ".temp";
+    }
+
+    public static String getTempName(String fileName) {
+        return fileName + ".temp";
     }
 
     public static void renameFileName(String oldPath, String newPath) throws IOException {

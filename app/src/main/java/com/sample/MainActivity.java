@@ -16,12 +16,28 @@
 
 package com.sample;
 
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.UriPermission;
 import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.DocumentsContract;
+import android.support.annotation.RequiresApi;
+import android.support.v4.content.ContextCompat;
+import android.support.v4.os.EnvironmentCompat;
+import android.support.v4.provider.DocumentFile;
 import android.support.v7.app.AppCompatActivity;
+import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.ProgressBar;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -36,11 +52,15 @@ import com.downloader.Progress;
 import com.downloader.Status;
 import com.sample.utils.Utils;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
 
     private static String dirPath;
 
-    final String URL1 = "http://www.appsapk.com/downloading/latest/Facebook-119.0.0.23.70.apk";
+    final String URL1 = "http://www.appsapk.com/downloading/latest/WeChat-6.5.7.apk";
     final String URL2 = "http://www.appsapk.com/downloading/latest/WeChat-6.5.7.apk";
     final String URL3 = "http://www.appsapk.com/downloading/latest/Instagram.apk";
     final String URL4 = "http://www.appsapk.com/downloading/latest/Emoji%20Flashlight%20-%20Brightest%20Flashlight%202018-2.0.1.apk";
@@ -78,11 +98,18 @@ public class MainActivity extends AppCompatActivity {
             progressBarTen, progressBarEleven, progressBarTwelve,
             progressBarThirteen, progressBarFourteen, progressBarFifteen;
 
+    private Switch switchView;
+
     int downloadIdOne, downloadIdTwo, downloadIdThree, downloadIdFour,
             downloadIdFive, downloadIdSix, downloadIdSeven,
             downloadIdEight, downloadIdNine, downloadIdTen,
             downloadIdEleven, downloadIdTwelve, downloadIdThirteen,
             downloadIdFourteen, downloadIdFifteen;
+
+    private SAFManager safManager;
+    private String outputRootUri;
+
+    private SharedPreferences appPrefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -108,6 +135,148 @@ public class MainActivity extends AppCompatActivity {
         onClickListenerThirteen();
         onClickListenerFourteen();
         onClickListenerFifteen();
+
+        final String sdCard = getFirstSDCard();
+        if (SAFManager.hasLollipop() && !TextUtils.isEmpty(sdCard)) {
+
+            appPrefs = getSharedPreferences("user_settings", MODE_PRIVATE);
+            boolean saveToSecondary = appPrefs.getBoolean("secondary_storage", false);
+
+            safManager = new SAFManager(this);
+
+            final String primaryStorage = Uri.fromFile(new File(dirPath)).toString();
+            String secondaryStorage = null;
+
+            if (saveToSecondary) {
+                secondaryStorage = getSavedSecondaryUri();
+            }
+
+            if (!TextUtils.isEmpty(secondaryStorage)) {
+                DocumentFile rootDoc = DocumentFile.fromTreeUri(this, Uri.parse(secondaryStorage));
+
+                if (rootDoc != null && rootDoc.exists()) {
+                    outputRootUri = secondaryStorage;
+                    switchView.setChecked(true);
+                } else {
+                    outputRootUri = primaryStorage;
+                    Toast.makeText(this, "unknown error", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                outputRootUri = primaryStorage;
+                if (saveToSecondary) {
+                    asSecondary(false);
+                }
+            }
+
+            switchView.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    if (isChecked) {
+                        String saved = getSavedSecondaryUri();
+                        if (TextUtils.isEmpty(saved)) {
+                            safManager.takeCardUriPermission(MainActivity.this, sdCard);
+                        } else {
+                            asSecondary(true);
+                            outputRootUri = saved;
+                        }
+                    } else {
+                        asSecondary(false);
+                        outputRootUri = primaryStorage;
+                    }
+                }
+            });
+        } else {
+            outputRootUri = Uri.fromFile(new File(dirPath)).toString();
+            switchView.setVisibility(View.GONE);
+        }
+    }
+
+    private String getFirstSDCard() {
+        List<String> sdCards = getSdCardPaths(getApplicationContext(), false);
+        return sdCards != null && !sdCards.isEmpty() ? sdCards.get(0) : null;
+    }
+
+    private void asSecondary(boolean flag) {
+        appPrefs.edit().putBoolean("secondary_storage", flag).apply();
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    private String getSavedSecondaryUri() {
+        String savedUri = safManager.getUri();
+
+        List<UriPermission> granted = getContentResolver().getPersistedUriPermissions();
+        for (UriPermission perm : granted) {
+            Uri uri = perm.getUri();
+
+            if (!TextUtils.isEmpty(savedUri)) {
+                if (savedUri.equals(uri.toString())) { // granted
+                    return savedUri;
+                }
+            } else {
+                String doc = DocumentsContract.getTreeDocumentId(uri);
+                if (!doc.startsWith("primary") && doc.endsWith(":")) {
+                    return uri.toString();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        boolean okay = safManager.onActivityResult(this, requestCode, resultCode, data);
+        if (!okay) {
+            switchView.setChecked(false);
+        } else {
+            outputRootUri = safManager.getUri();
+            asSecondary(true);
+        }
+    }
+
+    public static List<String> getSdCardPaths(final Context context, final boolean includePrimaryExternalStorage) {
+        final File[] externalCacheDirs = ContextCompat.getExternalCacheDirs(context);
+        if (externalCacheDirs.length == 0)
+            return null;
+        if (externalCacheDirs.length == 1) {
+            if (externalCacheDirs[0] == null)
+                return null;
+            final String storageState = EnvironmentCompat.getStorageState(externalCacheDirs[0]);
+            if (!Environment.MEDIA_MOUNTED.equals(storageState))
+                return null;
+            if (!includePrimaryExternalStorage && Environment.isExternalStorageEmulated())
+                return null;
+        }
+        final List<String> result = new ArrayList<>();
+        if (includePrimaryExternalStorage || externalCacheDirs.length == 1)
+            result.add(getRootOfInnerSdCardFolder(externalCacheDirs[0]));
+        for (int i = 1; i < externalCacheDirs.length; ++i) {
+            final File file = externalCacheDirs[i];
+            if (file == null)
+                continue;
+            final String storageState = EnvironmentCompat.getStorageState(file);
+            if (Environment.MEDIA_MOUNTED.equals(storageState))
+                result.add(getRootOfInnerSdCardFolder(externalCacheDirs[i]));
+        }
+        if (result.isEmpty())
+            return null;
+        return result;
+    }
+
+    /**
+     * Given any file/folder inside an sd card, this will return the path of the sd card
+     */
+    private static String getRootOfInnerSdCardFolder(File file) {
+        if (file == null)
+            return null;
+        final long totalSpace = file.getTotalSpace();
+        while (true) {
+            final File parentFile = file.getParentFile();
+            if (parentFile == null || parentFile.getTotalSpace() != totalSpace)
+                return file.getAbsolutePath();
+            file = parentFile;
+        }
     }
 
     private void init() {
@@ -174,6 +343,8 @@ public class MainActivity extends AppCompatActivity {
         progressBarThirteen = findViewById(R.id.progressBarThirteen);
         progressBarFourteen = findViewById(R.id.progressBarFourteen);
         progressBarFifteen = findViewById(R.id.progressBarFifteen);
+
+        switchView = findViewById(R.id.storage_switch);
     }
 
     public void onClickListenerOne() {
@@ -196,7 +367,11 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                downloadIdOne = PRDownloader.download(URL1, dirPath, "facebook.apk")
+//                File outputDestination = new File(dirPath, "facebook.apk");
+
+                Uri uri = Uri.parse(outputRootUri);
+
+                downloadIdOne = PRDownloader.download(URL1, uri.toString(), "slask.apk")
                         .build()
                         .setOnStartOrResumeListener(new OnStartOrResumeListener() {
                             @Override
@@ -228,6 +403,7 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void onProgress(Progress progress) {
                                 long progressPercent = progress.currentBytes * 100 / progress.totalBytes;
+                                Log.d("progress", progress.currentBytes +" " + progress.totalBytes);
                                 progressBarOne.setProgress((int) progressPercent);
                                 textViewProgressOne.setText(Utils.getProgressDisplayLine(progress.currentBytes, progress.totalBytes));
                                 progressBarOne.setIndeterminate(false);
@@ -282,6 +458,7 @@ public class MainActivity extends AppCompatActivity {
                     PRDownloader.resume(downloadIdTwo);
                     return;
                 }
+
                 downloadIdTwo = PRDownloader.download(URL2, dirPath, "wechat.apk")
                         .build()
                         .setOnStartOrResumeListener(new OnStartOrResumeListener() {
