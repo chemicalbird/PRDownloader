@@ -42,15 +42,22 @@ public class DownloadRunnable implements Runnable {
     public void run() {
         request.setStatus(Status.RUNNING);
         DownloadTask downloadTask = DownloadTask.create(request);
-        Response response = downloadTask.run();
-        if (response.isSuccessful()) {
-            request.deliverSuccess();
-        } else if (response.isPaused()) {
-            request.deliverPauseEvent();
-        } else if (response.getError() != null) {
-            request.deliverError(response.getError());
-        } else if (!response.isCancelled()) {
-            request.deliverError(new Error());
+        try {
+            Response response = downloadTask.run();
+
+            if (response.isSuccessful()) {
+                request.deliverSuccess();
+            } else if (response.isPaused()) {
+                request.deliverPauseEvent();
+            } else if (response.getError() != null) {
+                request.deliverError(response.getError());
+            } else if (!response.isCancelled()) {
+                request.deliverError(new Error());
+            }
+        } catch (Throwable e) {
+            Error error = new Error();
+            error.setConnectionException(e);
+            request.deliverError(error);
         }
     }
 

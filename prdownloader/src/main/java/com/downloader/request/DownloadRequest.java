@@ -226,7 +226,9 @@ public class DownloadRequest {
     public int start(OnDownloadListener onDownloadListener) {
         this.onDownloadListener = onDownloadListener;
         downloadId = Utils.getUniqueId(url, dirPath, fileName);
-        DownloadRequestQueue.getInstance().addRequest(this);
+        if (DownloadRequestQueue.getInstance().getStatus(downloadId) == Status.UNKNOWN) {
+            DownloadRequestQueue.getInstance().addRequest(this);
+        }
         return downloadId;
     }
 
@@ -308,7 +310,7 @@ public class DownloadRequest {
             future.cancel(true);
         }
         deliverCancelEvent();
-        Utils.deleteTempFileAndDatabaseEntryInBackground(Utils.getTempPath(dirPath, fileName), downloadId);
+        Utils.deleteTempFileAndDatabaseEntryInBackground(dirPath, Utils.getTempName(fileName), downloadId);
     }
 
     private void finish() {

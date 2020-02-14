@@ -87,11 +87,7 @@ public class DownloadTask {
                 progressHandler = new ProgressHandler(request.getOnProgressListener());
             }
 
-            if (!request.getDirPath().startsWith("file:") && !request.getDirPath().startsWith("content:")) {
-                storageUri = Uri.fromFile(new File(request.getDirPath()));
-            } else {
-                storageUri = Uri.parse(request.getDirPath());
-            }
+            storageUri = Utils.getDirUri(request.getDirPath());
 
             tempFileName = Utils.getTempName(request.getFileName());
 
@@ -223,7 +219,7 @@ public class DownloadTask {
                 removeNoMoreNeededModelFromDatabase();
             }
 
-        } catch (IOException | IllegalAccessException e) {
+        } catch (IOException | IllegalAccessException | NullPointerException e) {
             if (!isResumeSupported) {
                 deleteTempFile();
             }
@@ -231,7 +227,8 @@ public class DownloadTask {
             error.setConnectionError(true);
             error.setConnectionException(e);
             response.setError(error);
-        } finally {
+        }
+        finally {
             closeAllSafely(outputStream);
         }
 

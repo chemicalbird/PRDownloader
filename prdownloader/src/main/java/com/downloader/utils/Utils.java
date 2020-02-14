@@ -24,6 +24,7 @@ import com.downloader.core.Core;
 import com.downloader.database.DownloadModel;
 import com.downloader.httpclient.HttpClient;
 import com.downloader.internal.ComponentHolder;
+import com.downloader.internal.stream.OutputStreamWrapper;
 import com.downloader.request.DownloadRequest;
 
 import junit.framework.Assert;
@@ -80,17 +81,21 @@ public final class Utils {
         }
     }
 
-    public static void deleteTempFileAndDatabaseEntryInBackground(final String path, final int downloadId) {
+    public static Uri getDirUri(String dirPath) {
+        if (!dirPath.startsWith("content:") && !dirPath.startsWith("file:")) {
+            return Uri.fromFile(new File(dirPath));
+        } else {
+            return Uri.parse(dirPath);
+        }
+    }
+
+    public static void deleteTempFileAndDatabaseEntryInBackground(final String dirPath, final String file, final int downloadId) {
         Core.getInstance().getExecutorSupplier().forBackgroundTasks()
                 .execute(new Runnable() {
                     @Override
                     public void run() {
                         ComponentHolder.getInstance().getDbHelper().remove(downloadId);
-                        File file = new File(path);
-                        if (file.exists()) {
-                            //noinspection ResultOfMethodCallIgnored
-                            file.delete();
-                        }
+                        OutputStreamWrapper.getInstance().deleteFile(getDirUri(dirPath), file);
                     }
                 });
     }

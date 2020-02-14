@@ -2,7 +2,8 @@ package com.downloader.internal.stream;
 
 import android.content.Context;
 import android.net.Uri;
-import android.support.v4.provider.DocumentFile;
+
+import androidx.documentfile.provider.DocumentFile;
 
 import junit.framework.Assert;
 
@@ -87,7 +88,12 @@ public class OutputStreamWrapper {
         } else if ("content".equals(storageUri.getScheme())) {
             DocumentFile exists = DocumentFile.fromTreeUri(context, storageUri).findFile(fileName);
             if (exists == null) {
-                return DocumentFile.fromTreeUri(context, storageUri).createFile("", fileName).getUri().toString();
+                try {
+                    return DocumentFile.fromTreeUri(context, storageUri).createFile("", fileName).getUri().toString();
+                } catch (NullPointerException e) {
+                    exists = DocumentFile.fromTreeUri(context, storageUri).findFile(fileName);
+                    return exists != null ? exists.getUri().toString() : null;
+                }
             } else {
                 return exists.getUri().toString();
             }
@@ -100,9 +106,10 @@ public class OutputStreamWrapper {
         Assert.assertNotNull(storageUri.getPath());
 
         if ("file".equals(storageUri.getScheme())) {
-            return new File(storageUri.getPath()).exists();
+            return new File(storageUri.getPath(), file).exists();
         } else if ("content".equals(storageUri.getScheme())) {
-            return DocumentFile.fromTreeUri(context, storageUri).findFile(file).exists();
+            DocumentFile doc = DocumentFile.fromTreeUri(context, storageUri).findFile(file);
+            return doc != null && doc.exists();
         }
 
         return false;
